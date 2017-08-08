@@ -1,23 +1,39 @@
 ---
-title: "Runtime Explore"
-output: flexdashboard::flex_dashboard
+title: "Runtime Explorer"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: yeti
+    social: menu
+    source_code: embed
+
 runtime: shiny
-fontsize: 20pt
 ---
 
-critical runtime finder
-==============================
+```{r setup, iniclude=FALSE}
+
+library(metricsgraphics)
+library(jsonlite)
+library(ggplot2)
+library(rootSolve)
+library(dygraphs)
+
+
+
+```
+
+Runtime Histogram
+===========================
 
 Inputs {.sidebar}
-------------------------------
+---------------------------
 
 ```{r}
 
    sliderInput(
                 inputId="pre",
                 label="Choose the pre-emption rate",
-                min = 0.0025,
-                max = 0.1,
+                min = 0,
+                max = 0.2,
                 value = 0.02,
                 step = 0.0001,
                 sep="",
@@ -35,9 +51,7 @@ Row
 ----------------------------
 
 ```{r}
-    
-    library(ggplot2)
-    library(rootSolve)
+
     td1<-read.csv("CalDur.csv")
     td<-subset(td1,CalculationDuration<=40000 & CalculationDuration>0)
     
@@ -46,8 +60,12 @@ Row
           fun<-function(x){
             1-(1-input$pre)^(x/60)-(input$HiP-input$LowP)/input$HiP
           }
-          uni<-uniroot(fun,c(0,40000))
-          uni$root
+        if(fun(40000)<0){
+          root=100000
+        } else{
+          root<-uniroot(fun,c(0,40000))$root
+        }
+          root
         }
       )
   
@@ -59,21 +77,73 @@ Row
     +geom_vline(aes(xintercept=pr()),color="blue",linetype="dashed",size=1)
     +theme(axis.title=element_text(face="italic"),title=element_text(size=18,face="bold.italic"))
     +ggtitle("Runtime Histogram"))
-  
+
     renderText({
-      paste("The critical runtime is ",round(pr(),digits=2))
-    })
+    paste("The critical runtime is ",round(pr(),digits=2))
+  })
   
 ```
 
-If the expected runtime is lower than critical runtime, it's worthwhile to use the low priority VMs.
+***If the expected runtime is lower than critical runtime, it's profitable to use low priority VMs.***
 
-Page 2
-==============================
+Cost Ratio Curve
+=============================
 
 Inputs2 {.sidebar}
-------------------------------
+-----------------------------
+```{r}
 
-Row2
-------------------------------
+sliderInput(
+  inputId="pre2", 
+  label="Choose the pre-emption rate", 
+  min=0,
+  max=1,
+  value=0.02,
+  step=0.0001,
+  sep = "",
+  ticks = FALSE
+              )
 
+numericInput(inputId="HiP2",label="Price of high 
+                          priority VMs",value=5)
+   
+numericInput(inputId="LowP2",label="Price of low priority VMs",value=1)
+
+```
+
+Row
+------------------------
+
+
+```{r}
+
+
+renderDygraph({
+  
+  x<-c(1:40000)
+  eq<-0
+  fun2<-function(x){
+    1-(1-input$pre2)^(x/60)-(input$HiP2-input$LowP2)/input$HiP2
+    }
+  
+  if(fun2(40000)<0){
+    root<-100000
+  } else{
+    root<-uniroot(fun2,c(0,40000))$root
+  }
+  
+  for(i in 1:40000){
+    eq[i]<-(1-(1-(1-input$pre2)^(x[i]/60)))*(input$LowP2/input$HiP2)+(1-(1-input$pre2)^(x[i]/60))*((input$LowP2/input$HiP2)+1)
+  }
+  df<-data.frame(x,eq)
+  dygraph(df,xlab="runtime",ylab="cost ratio",main="Cost Ratio Curve")%>%
+    dyAnnotation(round(root),text="A",tooltip="Critical Runtime")%>%
+    dyShading(from=0,to=round(root),color="#FAEBD7")%>%
+    dyShading(from=round(root),to=40000,color="#F0F8FF")%>%
+    dyEvent(round(root),"critical runtime",labelLoc="bottom")%>%
+    dyRangeSelector()
+})
+
+
+
+```
