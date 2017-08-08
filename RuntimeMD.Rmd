@@ -1,0 +1,79 @@
+---
+title: "Runtime Explore"
+output: flexdashboard::flex_dashboard
+runtime: shiny
+fontsize: 20pt
+---
+
+critical runtime finder
+==============================
+
+Inputs {.sidebar}
+------------------------------
+
+```{r}
+
+   sliderInput(
+                inputId="pre",
+                label="Choose the pre-emption rate",
+                min = 0.0025,
+                max = 0.1,
+                value = 0.02,
+                step = 0.0001,
+                sep="",
+                ticks=FALSE
+   )
+
+   numericInput(inputId="HiP",label="Price of high 
+                          priority VMs",value=5)
+   
+   numericInput(inputId="LowP",label="Price of low priority VMs",value=1)
+                         
+```
+
+Row
+----------------------------
+
+```{r}
+    
+    library(ggplot2)
+    library(rootSolve)
+    td1<-read.csv("CalDur.csv")
+    td<-subset(td1,CalculationDuration<=40000 & CalculationDuration>0)
+    
+    pr<-reactive(
+        {
+          fun<-function(x){
+            1-(1-input$pre)^(x/60)-(input$HiP-input$LowP)/input$HiP
+          }
+          uni<-uniroot(fun,c(0,40000))
+          uni$root
+        }
+      )
+  
+    
+    renderPlot(
+    ggplot(td,aes(x=CalculationDuration))
+    +geom_histogram(binwidth=1800,color="gray20",fill="gray75")
+    +scale_x_continuous(name="runtime",limits=c(0,40000),breaks=seq(0,40000,5000))
+    +geom_vline(aes(xintercept=pr()),color="blue",linetype="dashed",size=1)
+    +theme(axis.title=element_text(face="italic"),title=element_text(size=18,face="bold.italic"))
+    +ggtitle("Runtime Histogram"))
+  
+    renderText({
+      paste("The critical runtime is ",round(pr(),digits=2))
+    })
+  
+```
+
+If the expected runtime is lower than critical runtime, it's worthwhile to use the low priority VMs.
+
+Page 2
+==============================
+
+Inputs2 {.sidebar}
+------------------------------
+
+Row2
+------------------------------
+
