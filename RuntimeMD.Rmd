@@ -114,36 +114,32 @@ numericInput(inputId="LowP2",label="Price of low priority VMs",value=1)
 Row
 ------------------------
 
-
 ```{r}
 
-
 renderDygraph({
-  
-  x<-c(1:40000)
-  eq<-0
+  x<-1:40000
   fun2<-function(x){
     1-(1-input$pre2)^(x/60)-(input$HiP2-input$LowP2)/input$HiP2
-    }
+  }
+  y<-(1-(1-(1-input$pre2)^(x/60)))*(input$LowP2/input$HiP2)+(1-(1-input$pre2)^(x/60))*((input$LowP2/input$HiP2)+1)
+  df2<-data.frame(x,y)
   
   if(fun2(40000)<0){
     root<-100000
   } else{
     root<-uniroot(fun2,c(0,40000))$root
   }
-  
-  for(i in 1:40000){
-    eq[i]<-(1-(1-(1-input$pre2)^(x[i]/60)))*(input$LowP2/input$HiP2)+(1-(1-input$pre2)^(x[i]/60))*((input$LowP2/input$HiP2)+1)
-  }
-  df<-data.frame(x,eq)
-  dygraph(df,xlab="runtime",ylab="cost ratio",main="Cost Ratio Curve")%>%
+  dygraph(df2,xlab="runtime",ylab="cost ratio",main="Cost Ratio Curve")%>%
     dyAnnotation(round(root),text="A",tooltip="Critical Runtime")%>%
     dyShading(from=0,to=round(root),color="#FAEBD7")%>%
     dyShading(from=round(root),to=40000,color="#F0F8FF")%>%
     dyEvent(round(root),"critical runtime",labelLoc="bottom")%>%
     dyRangeSelector()
+  
 })
 
 
 
 ```
+
+***Tip: Double click the graph to reset zooming.***
