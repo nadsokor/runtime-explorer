@@ -1,0 +1,188 @@
+---
+title: "Generic Scenario"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: yeti
+    social: menu
+    source_code: embed
+
+runtime: shiny
+---
+
+```{r setup, iniclude=FALSE}
+
+library(metricsgraphics)
+library(jsonlite)
+library(ggplot2)
+library(rootSolve)
+library(dygraphs)
+
+td<-read.csv("CalDurinMin.csv")
+names(td)[2]<-"CalculationDuration"
+
+
+```
+
+Inputs{.sidebar}
+-------------------------------------
+
+```{r}
+
+    sliderInput(
+      inputId = "pre",
+      label="Choose the pre-emption rate",
+      min=0,
+      max=1,
+      value=0.02,
+      step=0.0001,
+      sep="",
+      ticks=FALSE
+      
+    )
+
+    numericInput(inputId="HiP", label="Price of high priority VMs", value=5)
+    
+    numericInput(inputId="LowP", label="Price of low priority VMs", value=1)
+
+```
+
+Row
+-------------------------------------
+
+```{r}
+
+    td1<-subset(td, CalculationDuration<=750 & CalculationDuration>0)
+
+    crt<-reactive({
+      expectedLowP<-function(x){
+        (input$LowP)*(1-x*(1-input$pre)^(x-1)+(x-1)*(1-input$pre)^x)/input$pre+input$HiP*x+(input$LowP*x-input$HiP*x)*(1-input$pre)^x
+      }
+      
+      costHiP<-function(x){
+        input$HiP*x
+      }
+      
+      
+      fun<-function(x){
+        (input$LowP)*(1-x*(1-input$pre)^(x-1)+(x-1)*(1-input$pre)^x)/input$pre+input$HiP*x+(input$LowP*x-input$HiP*x)*(1-input$pre)^x-input$HiP*x
+      }
+
+      if(input$pre==0){
+        criticalRT<-99999
+      } else{
+        if(fun(750)<0){
+          criticalRT<-99999
+        } else{
+          criticalRT<-uniroot(fun,c(0.01,750))$root
+        }
+      }
+      
+      criticalRT
+
+    })
+
+    renderPlot({
+
+      ggplot(td1, aes(x=CalculationDuration))+geom_histogram(binwidth=30,color="gray20",fill="gray75")+scale_x_continuous(name="runtime",limits=c(0,750),breaks=seq(0,750,100))+geom_vline(aes(xintercept=crt()),color="blue",linetype="dashed",size=1)+theme(axis.title=element_text(face="italic"),title=element_text(size=18,face="bold.italic"))+ggtitle("Runtime Histogram")
+
+            
+    })
+
+    renderUI({
+      
+      strTab<-paste("")
+      str<-paste("The critical runtime is ",round(crt(),2)," minutes")
+      
+      HTML(paste(strTab, str, sep='<br/>'))
+      
+      
+    })
+```
+
+***If the expected runtime is lower than critical runtime, it's profitable to use low priority VMs.***
+
+```{r}
+
+renderDygraph({
+  x<-1:750
+  ratio<-function(x){
+    ((input$LowP)*(1-x*(1-input$pre)^(x-1)+(x-1)*(1-input$pre)^x)/input$pre+input$HiP*x+(input$LowP*x-input$HiP*x)*(1-input$pre)^x)/(input$HiP*x)
+  }
+  y<-ratio(x)
+  df<-data.frame(x,y)
+  
+  fun<-function(x){
+    (input$LowP)*(1-x*(1-input$pre)^(x-1)+(x-1)*(1-input$pre)^x)/input$pre+input$HiP*x+(input$LowP*x-input$HiP*x)*(1-input$pre)^x-input$HiP*x
+  }
+
+  if(input$pre==0){
+    criticalRT<-99999
+  } else{
+    if(fun(750)<0){
+      criticalRT<-99999
+    } else{
+      criticalRT<-uniroot(fun,c(0.01,750))$root
+    }
+  }
+
+  dygraph(df,xlab="runtime",ylab="cost ratio",main="Cost Ratio Curve")%>%
+    dyAnnotation(round(criticalRT),text="c",tooltip="Critical Runtime")%>%
+    dyShading(from=0,to=round(criticalRT),color="#FAEBD7")%>%
+    dyShading(from=round(criticalRT),to=750,color="#F0F8FF")%>%
+    dyEvent(round(criticalRT),"critical runtime",labelLoc="bottom")%>%
+    dyRangeSelector()
+  
+
+})
+
+```
+
+***Tip: Double click the graph to reset zooming.***
+  
+```{r}
+
+renderUI({
+  fun<-function(x){
+    (input$LowP)*(1-x*(1-input$pre)^(x-1)+(x-1)*(1-input$pre)^x)/input$pre+input$HiP*x+(input$LowP*x-input$HiP*x)*(1-input$pre)^x-input$HiP*x
+  }
+
+  if(input$pre==0){
+    criticalRT<-99999
+  } else{
+    if(fun(750)<0){
+      criticalRT<-99999
+    } else{
+      criticalRT<-uniroot(fun,c(0.01,750))$root
+    }
+  }
+
+  td1<-subset(td,CalculationDuration>0 & CalculationDuration<750)
+  td2<-subset(td,CalculationDuration>0)
+  td31<-subset(td,CalculationDuration>0 & CalculationDuration<=criticalRT)
+  td32<-subset(td,CalculationDuration>=criticalRT & CalculationDuration<750)
+  
+  expectedLowP<-function(x){
+    (input$LowP)*(1-x*(1-input$pre)^(x-1)+(x-1)*(1-input$pre)^x)/input$pre+input$HiP*x+(input$LowP*x-input$HiP*x)*(1-input$pre)^x
+  }
+  cost1<-expectedLowP(td2$CalculationDuration)
+  percentage1<-sum(cost1,TRUE)/sum(input$HiP*td2$CalculationDuration)
+  
+  cost2<-expectedLowP(td1$CalculationDuration)
+  percentage2<-sum(cost2,TRUE)/sum(input$HiP*td1$CalculationDuration)
+  
+  cost31<-expectedLowP(td31$CalculationDuration)
+  cost32<-td32$CalculationDuration*input$HiP
+  percentage3<-(sum(cost31,TRUE)+sum(cost32,TRUE))/sum(input$HiP*td1$CalculationDuration)
+  
+  str1<-paste("If no anomaly detection and runtime prediction is applied, the cost percentage is ", round(percentage1,2))
+  str2<-paste("If only anomaly detection is applied, the cost percentage is ", round(percentage2,2))
+  str3<-paste("If both anomaly detection and runtime prediction are applied, the cost percentage is ", round(percentage3,2))
+  
+  HTML(paste(str1, str2, str3, sep = '<br/>'))
+  
+})
+
+
+
+
+```
